@@ -306,14 +306,6 @@ func failedRemote(err error) bool {
 func (m *Memberlist) probeNode(node *nodeState) {
 	defer metrics.MeasureSinceWithLabels([]string{"memberlist", "probeNode"}, time.Now(), m.metricLabels)
 
-	// We use our health awareness to scale the overall probe interval, so we
-	// slow down if we detect problems. The ticker that calls us can handle
-	// us running over the base interval, and will skip missed ticks.
-	probeInterval := m.awareness.ScaleTimeout(m.config.ProbeInterval)
-	if probeInterval > m.config.ProbeInterval {
-		metrics.IncrCounterWithLabels([]string{"memberlist", "degraded", "probe"}, 1, m.metricLabels)
-	}
-
 	// Prepare a ping message and setup an ack handler.
 	selfAddr, selfPort := m.getAdvertise()
 	ping := ping{
@@ -325,7 +317,7 @@ func (m *Memberlist) probeNode(node *nodeState) {
 	}
 	ackCh := make(chan ackMessage, m.config.IndirectChecks+1)
 	nackCh := make(chan struct{}, m.config.IndirectChecks+1)
-	m.setProbeChannels(ping.SeqNo, ackCh, nackCh, probeInterval)
+	m.setProbeChannels(ping.SeqNo, ackCh, nackCh, m.config.ProbeTimeout)
 
 	// Mark the sent time here, which should be after any pre-processing but
 	// before system calls to do the actual send. This probably over-reports
@@ -337,7 +329,7 @@ func (m *Memberlist) probeNode(node *nodeState) {
 	// Send a ping to the node. If this node looks like it's suspect or dead,
 	// also tack on a suspect message so that it has a chance to refute as
 	// soon as possible.
-	deadline := sent.Add(probeInterval)
+	deadline := sent.Add(m.config.ProbeTimeout)
 	addr := node.Address()
 
 	// Arrange for our self-awareness to get updated.
@@ -469,7 +461,7 @@ HANDLE_REMOTE_FAILURE:
 			if err != nil {
 				var to string
 				if ne, ok := err.(net.Error); ok && ne.Timeout() {
-					to = fmt.Sprintf("timeout %s: ", probeInterval)
+					to = fmt.Sprintf("timeout %s: ", m.config.ProbeTimeout)
 				}
 				m.logger.Printf("[ERR] memberlist: Failed fallback TCP ping: %s%s", to, err)
 			} else {
@@ -535,7 +527,7 @@ func (m *Memberlist) Ping(node string, addr net.Addr) (time.Duration, error) {
 		SourceNode: m.config.Name,
 	}
 	ackCh := make(chan ackMessage, m.config.IndirectChecks+1)
-	m.setProbeChannels(ping.SeqNo, ackCh, nil, m.config.ProbeInterval)
+	m.setProbeChannels(ping.SeqNo, ackCh, nil, m.config.ProbeTimeout)
 
 	a := Address{Addr: addr.String(), Name: node}
 
