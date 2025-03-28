@@ -920,7 +920,7 @@ func (m *Memberlist) invokeNackHandler(nack nackResp) {
 // nodeLock is held.
 func (m *Memberlist) refute(me *nodeState, accusedInc uint32) {
 	// Make sure the incarnation number beats the accusation.
-	inc := m.nextIncarnation()
+	inc := m.skipIncarnation(0)
 	if accusedInc >= inc {
 		inc = m.skipIncarnation(accusedInc - inc + 1)
 	}
@@ -1180,6 +1180,15 @@ func (m *Memberlist) suspectNode(s *suspect) {
 		return
 	}
 
+	// If this is us we need to refute
+	if state.Name == m.config.Name {
+		if !m.hasLeft() {
+			m.refute(state, s.Incarnation)
+			m.logger.Printf("[WARN] memberlist: Refuting a suspect message (from: %s, incarnation: %d)", s.From, s.Incarnation)
+		}
+		return // Do not mark ourself suspect
+	}
+
 	// Ignore old incarnation numbers
 	if s.Incarnation < state.Incarnation {
 		return
@@ -1201,14 +1210,7 @@ func (m *Memberlist) suspectNode(s *suspect) {
 		return
 	}
 
-	// If this is us we need to refute, otherwise re-broadcast
-	if state.Name == m.config.Name {
-		m.refute(state, s.Incarnation)
-		m.logger.Printf("[WARN] memberlist: Refuting a suspect message (from: %s)", s.From)
-		return // Do not mark ourself suspect
-	} else {
-		m.encodeAndBroadcast(s.Node, suspectMsg, s)
-	}
+	m.encodeAndBroadcast(s.Node, suspectMsg, s)
 
 	// Update metrics
 	metrics.IncrCounterWithLabels([]string{"memberlist", "msg", "suspect"}, 1, m.metricLabels)
@@ -1283,6 +1285,19 @@ func (m *Memberlist) deadNode(d *dead) {
 		return
 	}
 
+	// Check if this is us
+	if state.Name == m.config.Name {
+		// If we are not leaving we need to refute
+		if !m.hasLeft() {
+			m.refute(state, d.Incarnation)
+			m.logger.Printf("[WARN] memberlist: Refuting a dead message (from: %s)", d.From)
+			return // Do not mark ourself dead
+		}
+
+		// If we are leaving, we broadcast and wait
+		m.encodeBroadcastNotify(d.Node, deadMsg, d, m.leaveBroadcast)
+	}
+
 	// Ignore old incarnation numbers
 	if d.Incarnation < state.Incarnation {
 		return
@@ -1296,20 +1311,7 @@ func (m *Memberlist) deadNode(d *dead) {
 		return
 	}
 
-	// Check if this is us
-	if state.Name == m.config.Name {
-		// If we are not leaving we need to refute
-		if !m.hasLeft() {
-			m.refute(state, d.Incarnation)
-			m.logger.Printf("[WARN] memberlist: Refuting a dead message (from: %s)", d.From)
-			return // Do not mark ourself dead
-		}
-
-		// If we are leaving, we broadcast and wait
-		m.encodeBroadcastNotify(d.Node, deadMsg, d, m.leaveBroadcast)
-	} else {
-		m.encodeAndBroadcast(d.Node, deadMsg, d)
-	}
+	m.encodeAndBroadcast(d.Node, deadMsg, d)
 
 	// Update metrics
 	metrics.IncrCounterWithLabels([]string{"memberlist", "msg", "dead"}, 1, m.metricLabels)
