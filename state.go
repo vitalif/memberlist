@@ -574,6 +574,9 @@ func (m *Memberlist) resetNodes() {
 
 	// Deregister the dead nodes
 	for i := deadIdx; i < len(m.nodes); i++ {
+		if m.nodeAddr[m.nodes[i].Addr.String()] == m.nodes[i] {
+			delete(m.nodeAddr, m.nodes[i].Addr.String())
+		}
 		delete(m.nodeMap, m.nodes[i].Name)
 		m.nodes[i] = nil
 	}
@@ -1024,6 +1027,7 @@ func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 
 		// Add to map
 		m.nodeMap[a.Node] = state
+		m.nodeAddr[net.IP(a.Addr).String()] = state
 
 		// Get a random offset. This is important to ensure
 		// the failure detection bound is low on average. If all
@@ -1134,6 +1138,12 @@ func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 		// Update the state and incarnation number
 		state.Incarnation = a.Incarnation
 		state.Meta = a.Meta
+		if !bytes.Equal([]byte(state.Addr), a.Addr) {
+			if m.nodeAddr[state.Addr.String()] == state {
+				delete(m.nodeAddr, state.Addr.String())
+			}
+			m.nodeAddr[net.IP(a.Addr).String()] = state
+		}
 		state.Addr = a.Addr
 		state.Port = a.Port
 		if state.State != StateAlive {
@@ -1249,6 +1259,16 @@ func (m *Memberlist) suspectNode(s *suspect) {
 		}
 	}
 	m.nodeTimers[s.Node] = newSuspicion(s.From, k, min, max, fn)
+}
+
+func (m *Memberlist) getNodeName(addr string) string {
+	m.nodeLock.RLock()
+	defer m.nodeLock.RUnlock()
+	fromNode := m.nodeAddr[addr]
+	if fromNode != nil {
+		return fromNode.Name
+	}
+	return addr
 }
 
 // deadNode is invoked by the network layer when we get a message

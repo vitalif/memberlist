@@ -687,6 +687,7 @@ func (m *Memberlist) handleSuspect(buf []byte, from net.Addr) {
 		m.logger.Printf("[ERR] memberlist: Failed to decode suspect message: %s %s", err, LogAddress(from))
 		return
 	}
+	m.logger.Printf("[DEBUG] memberlist: gossiper=%s origin=%s suspect=%s inc=%d", m.getNodeName(from.String()), sus.From, sus.Node, sus.Incarnation)
 	m.suspectNode(&sus)
 }
 
@@ -747,6 +748,7 @@ func (m *Memberlist) handleDead(buf []byte, from net.Addr) {
 		m.logger.Printf("[ERR] memberlist: Failed to decode dead message: %s %s", err, LogAddress(from))
 		return
 	}
+	m.logger.Printf("[DEBUG] memberlist: gossiper=%s origin=%s dead=%s inc=%d", m.getNodeName(from.String()), d.From, d.Node, d.Incarnation)
 	m.deadNode(&d)
 }
 

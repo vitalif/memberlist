@@ -67,6 +67,7 @@ type Memberlist struct {
 	nodeLock   sync.RWMutex
 	nodes      []*nodeState          // Known nodes
 	nodeMap    map[string]*nodeState // Maps Node.Name -> NodeState
+	nodeAddr   map[string]*nodeState // Maps Node.Address -> NodeState
 	nodeTimers map[string]*suspicion // Maps Node.Name -> suspicion timer
 	awareness  *awareness
 
@@ -215,6 +216,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 		highPriorityMsgQueue: list.New(),
 		lowPriorityMsgQueue:  list.New(),
 		nodeMap:              make(map[string]*nodeState),
+		nodeAddr:             make(map[string]*nodeState),
 		nodeTimers:           make(map[string]*suspicion),
 		awareness:            newAwareness(conf.AwarenessMaxMultiplier, conf.MetricLabels),
 		ackHandlers:          make(map[uint32]*ackHandler),
